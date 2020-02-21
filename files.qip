@@ -28,3 +28,4 @@ set_global_assignment -name VHDL_FILE bombjack/p2_switches.vhd
 set_global_assignment -name VHDL_FILE bombjack/bombjack.vhd
 set_global_assignment -name VHDL_FILE bombjack_top.vhd
 set_global_assignment -name SYSTEMVERILOG_FILE "Arcade-BombJack.sv"
+set_global_assignment -name VERILOG_FILE sys/joydb9md.v
