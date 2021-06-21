@@ -54,7 +54,7 @@ module emu
 
 	input  [11:0] HDMI_WIDTH,
 	input  [11:0] HDMI_HEIGHT,
-	
+
 `ifdef USE_FB
 	// Use framebuffer from DDRAM (USE_FB=1 in qsf)
 	// FB_FORMAT:
@@ -172,6 +172,7 @@ localparam CONF_STR = {
 	"OUV,UserIO Joystick,Off,DB9MD,DB15 ;",
 	"OT,UserIO Players, 1 Player,2 Players;",
 "-;",
+	"ON,Flip Screen,Off,On;",
 	"O7,Demo Sounds,On,Off;",
 	"O89,Lives,3,4,5,2;",
 	"OAB,Bonus,500k,750k;",
@@ -222,8 +223,6 @@ wire [15:0] joy = joystick_0 | joystick_1;
 
 wire [21:0] gamma_bus;
 
-reg 			pause;
-
 // CO S2 S1 F1 U D L R 
 wire [31:0] joystick_0 = joydb_1ena ? {joydb_1[11]|(joydb_1[10]&joydb_1[5]),joydb_1[9],joydb_1[10],joydb_1[4:0]} : joystick_0_USB;
 wire [31:0] joystick_1 = joydb_2ena ? {joydb_2[11]|(joydb_2[10]&joydb_2[5]),joydb_2[10],joydb_2[9],joydb_2[4:0]} : joydb_1ena ? joystick_0_USB : joystick_1_USB;
@@ -258,7 +257,6 @@ joy_db15 joy_db15
   .joystick1 ( JOYDB15_1 ),
   .joystick2 ( JOYDB15_2 )	  
 );
-
 
 hps_io #(.STRLEN($size(CONF_STR)>>3)) hps_io
 (
@@ -306,18 +304,41 @@ wire m_start2 = joy[6];
 wire m_coin   = joy[7];
 wire m_pause  = joy[8];
 
-reg pause_toggle = 1'b0;
-always @(posedge clk_sys) begin
-    reg old_pause;
-    old_pause <= m_pause;
-    if(~old_pause & m_pause) pause_toggle <= ~pause_toggle;
-end
+// PAUSE SYSTEM
+reg				pause;									// Pause signal (active-high)
+reg				pause_toggle = 1'b0;					// User paused (active-high)
+reg [31:0]		pause_timer;							// Time since pause
+reg [31:0]		pause_timer_dim = 31'h1C9C3800;	// Time until screen dim (10 seconds @ 48Mhz)
 
+always @(posedge clk_sys) begin
+	// User pause toggle
+	reg old_pause;
+	old_pause <= m_pause;
+	if(~old_pause & m_pause) pause_toggle <= ~pause_toggle;
+	
+	// Screen dim while paused
+	rgb_out <= {r,g,b};
+	if(pause_toggle)
+	begin
+		if(pause_timer<pause_timer_dim)
+		begin
+			pause_timer <= pause_timer + 1'b1;
+		end
+		else
+		begin
+			rgb_out <= {r >> 1,g >> 1, b >> 1};
+		end
+	end
+	else
+	begin
+		pause_timer <= 1'b0;
+	end
+end
 
 wire hblank, vblank;
 wire hs, vs;
-wire [3:0] r,g;
-wire [3:0] b;
+wire [3:0] r,g,b;
+wire [11:0] rgb_out;
 
 reg ce_pix;
 always @(posedge clk_sys) begin
@@ -336,7 +357,7 @@ arcade_video #(270,12) arcade_video
 
         .clk_video(clk_sys),
 
-        .RGB_in({r,g,b}),
+        .RGB_in(rgb_out),
         .HBlank(hblank),
         .VBlank(vblank),
         .HSync(hs),
@@ -389,8 +410,7 @@ bombjack_top bombjack_top
 	.SW_ENEMIES(status[14:13]),
 	.SW_BIRDSPEED(status[19:18]),
 	.SW_BONUS(status[17:15]),
-	
-	
+
 	.VGA_R(r),
 	.VGA_G(g),
 	.VGA_B(b),
@@ -400,27 +420,34 @@ bombjack_top bombjack_top
 	.O_HBLANK(hblank),
 
 	.audio(audio),
-	
+
 	.pause(pause),
-	
+
 	.hs_address(hs_address),
 	.hs_data_out(ioctl_din),
-	.hs_data_in(hs_to_ram),
-	.hs_write(hs_write)
+	.hs_data_in(hs_data_in),
+	.hs_write(hs_write),
+	.flip_screen(status[23])
 );
 
 
 wire [15:0]hs_address;
-wire [7:0]hs_to_ram;
+wire [7:0]hs_data_in;
 wire hs_write;
 wire hs_pause;
 
 assign pause = hs_pause || pause_toggle;
 
-hiscore #(16) hi (
+hiscore #(
+	.HS_ADDRESSWIDTH(16),
+	.CFG_ADDRESSWIDTH(4),
+	.DELAY_CHECKWAIT(6'b1111),
+	.DELAY_CHECKHOLD(1'b0)
+	
+) hi (
 	.clk(clk_sys),
 	.reset(reset),
-	.delay(1'b0),
+	.delay(31'hFFFFF),
 	.ioctl_upload(ioctl_upload),
 	.ioctl_download(ioctl_download),
 	.ioctl_wr(ioctl_wr),
@@ -429,9 +456,9 @@ hiscore #(16) hi (
 	.ioctl_din(ioctl_din),
 	.ioctl_index(ioctl_index),
 	.ram_address(hs_address),
-	.data_to_ram(hs_to_ram),
+	.data_to_ram(hs_data_in),
 	.ram_write(hs_write),
-	.pause(hs_pause)
+	.ram_access(hs_pause)
 );
 
 endmodule
