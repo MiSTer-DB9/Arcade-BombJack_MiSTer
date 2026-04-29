@@ -31,5 +31,3 @@ set_global_assignment -name VERILOG_FILE "rtl/hvsync_gen.v"
 set_global_assignment -name SYSTEMVERILOG_FILE "rtl/hiscore.v"
 set_global_assignment -name SYSTEMVERILOG_FILE "rtl/pause.v"
 set_global_assignment -name SYSTEMVERILOG_FILE "Arcade-BombJack.sv"
-set_global_assignment -name VERILOG_FILE joydb9md.v
-set_global_assignment -name VERILOG_FILE joydb15.v
